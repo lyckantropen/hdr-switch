@@ -4,7 +4,7 @@ project(core)
 
 include(${CMAKE_ROOT}/Modules/ExternalProject.cmake)
 
-set(NVAPI_DL_PATH "g:/users/bradg/Downloads/R430-developer.zip")
+set(NVAPI_DL_PATH "C:/Users/Karol Trojanowski/Downloads/R460-developer.zip")
 
 set(NVAPI_PROJECT_NAME ext_nvapi)
 set(NVAPI_PROJECT_PATH ${CMAKE_CURRENT_BINARY_DIR}/nvapi)
@@ -24,11 +24,11 @@ target_compile_definitions(nvapi
 )
 
 
-if(${CMAKE_GENERATOR_PLATFORM} STREQUAL "win32")
-  set(nvlib x86/nvapi.lib)
-else()
+# if(${CMAKE_GENERATOR_PLATFORM} STREQUAL "win32")
+#   set(nvlib x86/nvapi.lib)
+# else()
   set(nvlib amd64/nvapi64.lib)
-endif()
+# endif()
 
 
 set_property(TARGET nvapi PROPERTY IMPORTED_LOCATION ${NVAPI_PATH}/${nvlib})
@@ -57,3 +57,6 @@ install(EXPORT libCore NAMESPACE core::
         DESTINATION ../lib/cmake/core)
 
 export(EXPORT libCore NAMESPACE core::)
+
+add_executable(hdr_toggle main.cpp)
+target_link_libraries(hdr_toggle core)

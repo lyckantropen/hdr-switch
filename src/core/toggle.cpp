@@ -1,5 +1,7 @@
 #include <tuple>
 #include <memory>
+#include <vector>
+#include <algorithm>
 
 #include "toggle.h"
 #include "sdk_status.h"
@@ -113,35 +115,45 @@ namespace core
     {
         auto impl = (ToggleImpl *)this;
 
-        auto [dispId, dispStatus] = impl->getPrimaryDispId();
-        if(!dispStatus.IsSuccessful)
-        {
-            return dispStatus;
+        auto dispIdsHdr = impl->getHdrDisplayIds();
+        
+        std::vector<SdkStatus> statuses;
+        for(const auto & dispId : dispIdsHdr) {
+            auto color = impl->setColorData(mode);
+            auto status = SdkStatusImpl(NvAPI_Disp_ColorControl(dispId.displayId, &color));
+            statuses.push_back(status);
         }
 
-        auto color = impl->setColorData(mode);
-        auto status = SdkStatusImpl(NvAPI_Disp_ColorControl(dispId, &color));
-
-        return status;
+        if(std::any_of(std::begin(statuses), std::end(statuses), [](SdkStatus s) { return s.IsSuccessful; })){
+            return SdkStatus{ "", true };
+        }
+        else {
+            return *std::find_if_not(std::begin(statuses), std::end(statuses), [](SdkStatus s) { return s.IsSuccessful; });
+        }
     }
 
     SdkStatus Toggle::setHdrMode(bool enabled)
     {
         auto impl = (ToggleImpl *)this;
 
-        auto [dispId, dispStatus] = impl->getPrimaryDispId();
-        if(!dispStatus.IsSuccessful)
-        {
-            return dispStatus;
+        auto dispIdsHdr = impl->getHdrDisplayIds();
+
+        std::vector<SdkStatus> statuses;
+        for(const auto & dispId : dispIdsHdr) {
+            auto color = impl->setHdrData(enabled);
+            auto status = SdkStatusImpl(NvAPI_Disp_HdrColorControl(dispId.displayId, &color));
+            statuses.push_back(status);
         }
 
-        auto color = impl->setHdrData(enabled);
-        auto status = SdkStatusImpl(NvAPI_Disp_HdrColorControl(dispId, &color));
-
-        return status;
+        if(std::any_of(std::begin(statuses), std::end(statuses), [](SdkStatus s) { return s.IsSuccessful; })){
+            return SdkStatus{ "", true };
+        }
+        else {
+            return *std::find_if_not(std::begin(statuses), std::end(statuses), [](SdkStatus s) { return s.IsSuccessful; });
+        }
     }
 
-    std::tuple<unsigned long, SdkStatus> ToggleImpl::getPrimaryDispId()
+    std::vector<NV_GPU_DISPLAYIDS> ToggleImpl::getHdrDisplayIds()
     {
         NvU32 dispIdCount = 0;
 
@@ -151,7 +163,7 @@ namespace core
         SdkStatus status = SdkStatusImpl(NvAPI_EnumPhysicalGPUs(gpuHandles.get(), &numOfGPUs));
         if (!status.IsSuccessful)
         {
-            return {-1, status};
+            return {};
         }
 
         NvU32 connected_displays = 0;
@@ -159,20 +171,37 @@ namespace core
         status = SdkStatusImpl(NvAPI_GPU_GetConnectedDisplayIds(gpuHandles[0], NULL, &dispIdCount, NULL));
         if (!status.IsSuccessful)
         {
-            return {-1, status};
+            return {};
         }
 
-        auto dispIds = std::make_unique<NV_GPU_DISPLAYIDS[]>(dispIdCount);
+        auto dispIds = std::vector<NV_GPU_DISPLAYIDS>(dispIdCount);
+        //auto dispIds = std::make_unique<NV_GPU_DISPLAYIDS[]>(dispIdCount);
 
-        dispIds[0].version = NV_GPU_DISPLAYIDS_VER;
+        for(auto & dispId : dispIds) {
+            dispId.version = NV_GPU_DISPLAYIDS_VER;
+        }
 
-        status = SdkStatusImpl(NvAPI_GPU_GetConnectedDisplayIds(gpuHandles[0], dispIds.get(), &dispIdCount, NULL));
+        status = SdkStatusImpl(NvAPI_GPU_GetConnectedDisplayIds(gpuHandles[0], dispIds.data(), &dispIdCount, NULL));
         if (!status.IsSuccessful)
         {
-            return {-1, status};
+            return {};
+        }
+        
+        std::vector<NV_GPU_DISPLAYIDS> displayIdsHdr;
+        for(auto & dispId : dispIds) {
+            NV_HDR_CAPABILITIES hdrCapabilities;
+            hdrCapabilities.version = NV_HDR_CAPABILITIES_VER;
+            status = SdkStatusImpl(NvAPI_Disp_GetHdrCapabilities(dispId.displayId, &hdrCapabilities));
+            if (!status.IsSuccessful)
+            {
+                return {};
+            }
+            if(hdrCapabilities.isST2084EotfSupported == 1) {
+                displayIdsHdr.push_back(dispId);
+            }
         }
 
-        return { dispIds[0].displayId, status };
+        return displayIdsHdr;
     }
 
 } // namespace core
